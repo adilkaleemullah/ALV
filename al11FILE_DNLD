@@ -1,0 +1,155 @@
+REPORT ZTEST_APPDOWNLOAD.
+*&---------------------------------------------------------------------*
+** Declaration of Structures
+*&---------------------------------------------------------------------*
+TYPES : BEGIN OF wrk_txt,
+          txt(1500) TYPE c,
+        END OF wrk_txt.
+
+*&---------------------------------------------------------------------*
+** Declaration of Internal Tables
+*&---------------------------------------------------------------------*
+DATA: itab TYPE STANDARD TABLE OF wrk_txt
+                          WITH DEFAULT KEY
+                          WITH HEADER LINE.
+
+*&---------------------------------------------------------------------*
+*&      Declaration of Variables
+*&---------------------------------------------------------------------*
+DATA : wrk_dfname    TYPE string.               "Download File Name
+
+*&---------------------------------------------------------------------*
+*&      Selection Screen
+*&---------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK 1 WITH FRAME TITLE text-001.
+PARAMETERS: p_appfnm LIKE rlgrap-filename OBLIGATORY,
+            p_filnam  LIKE rlgrap-filename OBLIGATORY
+                    DEFAULT 'C:\' .
+SELECTION-SCREEN END OF BLOCK 1.
+
+*&---------------------------------------------------------------------*
+*&      At Selection Screen
+*&---------------------------------------------------------------------*
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_filnam.
+  PERFORM file_name_get_sls USING p_filnam.
+
+*&---------------------------------------------------------------------*
+*&      Start of Selection
+*&---------------------------------------------------------------------*
+START-OF-SELECTION.
+** Initialization
+  PERFORM initialization_prc.
+
+** Read file from the path and put it in a Internal table
+  PERFORM read_file_from_appserver_prc.
+
+** Download the file to the Presentation server
+  PERFORM download_file_to_pserver_prc.
+
+*&---------------------------------------------------------------------*
+*&      Form  Initialization_prc
+*&---------------------------------------------------------------------*
+*       Initializing Variables and Internal Tables
+*----------------------------------------------------------------------*
+FORM initialization_prc .
+  CLEAR : itab,
+          wrk_dfname.
+
+  REFRESH : itab.
+
+  wrk_dfname = p_filnam.
+ENDFORM.                    " Initialization_prc
+
+*&---------------------------------------------------------------------*
+*&      Form  Read_file_from_appserver_prc
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+
+FORM read_file_from_appserver_prc .
+  CLEAR : itab.
+
+* Open file for reading
+  OPEN DATASET  p_appfnm FOR INPUT IN TEXT MODE.
+*        ENCODING DEFAULT.
+
+  IF sy-subrc <> 0.
+    WRITE : ' File Doesnt Exists...!'.
+    EXIT.
+  ELSE.
+    DO.
+      READ DATASET p_appfnm INTO itab.
+      IF sy-subrc = 0.
+        APPEND itab.
+        CLEAR itab.
+      ELSE.
+        EXIT.
+      ENDIF.
+    ENDDO.
+  ENDIF.
+ENDFORM.                    " Read_file_from_appserver_prc
+
+*&---------------------------------------------------------------------*
+*&      Form  Download_file_to_pserver_prc
+*&---------------------------------------------------------------------*
+*       Download the file to Presentation Server
+*----------------------------------------------------------------------*
+FORM download_file_to_pserver_prc .
+
+  CALL FUNCTION 'GUI_DOWNLOAD'
+     EXPORTING
+       filename                        = wrk_dfname
+       filetype                        = 'ASC'
+     TABLES
+       data_tab                        = itab[]
+    EXCEPTIONS
+      file_write_error                = 1
+      no_batch                        = 2
+      gui_refuse_filetransfer         = 3
+      invalid_type                    = 4
+      no_authority                    = 5
+      unknown_error                   = 6
+      header_not_allowed              = 7
+      separator_not_allowed           = 8
+      filesize_not_allowed            = 9
+      header_too_long                 = 10
+      dp_error_create                 = 11
+      dp_error_send                   = 12
+      dp_error_write                  = 13
+      unknown_dp_error                = 14
+      access_denied                   = 15
+      dp_out_of_memory                = 16
+      disk_full                       = 17
+      dp_timeout                      = 18
+      file_not_found                  = 19
+      dataprovider_exception          = 20
+      control_flush_error             = 21
+      OTHERS                          = 22.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+ENDFORM.                    " Download_file_to_pserver_prc
+*&---------------------------------------------------------------------*
+*&      Form  FILE_NAME_GET_SLS
+*&---------------------------------------------------------------------*
+*       Get File Path where the file is downloaded
+*----------------------------------------------------------------------*
+
+FORM file_name_get_sls  USING    li_filnam.
+
+  CALL FUNCTION 'KD_GET_FILENAME_ON_F4'
+    EXPORTING
+      STATIC              = 'X'
+      MASK                = ',*.txt,*.txt.'
+    CHANGING
+      file_name           = li_filnam
+   EXCEPTIONS
+     MASK_TOO_LONG       = 1
+     OTHERS              = 2
+            .
+  IF sy-subrc <> 0.
+   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+           WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+ENDFORM.                    " FILE_NAME_GET_SLS
